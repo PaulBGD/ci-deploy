@@ -1,0 +1,31 @@
+{
+  "name": "ci-deploy",
+  "preferGlobal": true,
+  "version": "1.0.0",
+  "description": "Easily deploy artifacts to a CI Host",
+  "main": "./bin/ci-deploy",
+  "author": {
+    "email": "paul@burngames.net",
+    "name": "Paul Sauve",
+    "url": "https://paulb.gd"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PaulBGD/ci-deploy.git"
+  },
+  "keywords": [
+    "artifact",
+    "ci",
+    "deploy",
+    "host"
+  ],
+  "bin": {
+    "ci-deploy": "./bin/ci-deploy"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "archiver": "^0.14.4",
+    "glob": "^5.0.14",
+    "js-yaml": "^3.3.1"
+  }
+}

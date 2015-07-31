@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+
+var fs = require('fs');
+var net = require('net');
+var path = require('path');
+var glob = require('glob');
+var yaml = require('js-yaml');
+var crypto = require('crypto');
+var archiver = require('archiver');
+
+process.argv.splice(0, 2);
+
+var configFile = path.join(__dirname, '../', 'config.json');
+
+if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
+    if (fs.existsSync(configFile)) {
+        var data = fs.readFileSync(configFile, 'utf8').toString();
+        var json = JSON.parse(data);
+        if (json.key) {
+            return console.log('Your key is ' + json.key);
+        }
+    }
+    var bytes = crypto.randomBytes(48);
+    var string = bytes.toString('hex');
+    fs.writeFileSync(configFile, JSON.stringify({key: string, ip: 'http://unknown.com', port: 8084}, null, 3));
+    console.log('Your key is ' + string);
+} else if (process.argv.length == 1 && /^\d+$/.test(process.argv[0])) {
+    // deploy
+    var gitlabYML = path.join(process.cwd(), '.gitlab-ci.yml');
+    if (!fs.existsSync(gitlabYML)) {
+        return console.error('.gitlab-ci.yml does not exist!');
+    }
+    data = yaml.load(fs.readFileSync(gitlabYML));
+    if (!data['ci-deploy']) {
+        return console.error('ci-deploy not found');
+    }
+    var toGlob = data['ci-deploy'].files || [];
+    var files = [];
+    toGlob.forEach(function (toGlob) {
+        files = files.concat(glob.sync(toGlob));
+    });
+    if (files.length == 1) {
+        // upload a single file
+        upload(fs.createReadStream(files[0]), path.extname(files[0]));
+    } else if (files.length > 1) {
+        // zip the files
+        var zip = archiver('zip', {});
+        files.forEach(function (file) {
+            zip.file(file, {name: file});
+        });
+        zip.finalize();
+        zip.on('finish', function () {
+            upload(zip, '.zip');
+        });
+    }
+} else {
+    console.log('Invalid usage. Usage: ci-deploy [configure|$CI_PROJECT_ID]');
+}
+
+function upload(pipe, extension) {
+    if (!fs.existsSync(configFile)) {
+        return console.error('Key does not exist! Have you ran ci-deploy configure?');
+    }
+    var config = require(configFile);
+    if (!config.key) {
+        return console.error('Key does not exist! Have you ran ci-deploy configure?');
+    }
+    var buffers = [];
+    pipe.on('data', function (buffer) {
+        buffers.push(buffer);
+    });
+    pipe.on('end', function () {
+        var buffer = Buffer.concat(buffers);
+        var key = config.key;
+        var id = key.substring(0, key.length / 2);
+        var salt = key.substring(key.length / 2, key.length);
+        var cipher = crypto.createCipher('aes-256-cbc', salt, salt);
+        cipher.setAutoPadding(false);
+        buffer = cipher.update(buffer);
+
+        // buffer is encrypted, time to send
+        var client = new net.Socket();
+        client.connect(config.port, config.ip, function () {
+            console.log('Connected to server');
+            var tasks = [
+                function () {
+                    console.log('Sending unique id..');
+                    client.write(id);
+                },
+                function () {
+                    console.log('Sending project id..');
+                    client.write(process.argv[0]);
+                },
+                function () {
+                    console.log('Sending extension..');
+                    client.write(extension);
+                },
+                function () {
+                    console.log('Sending file..');
+                    client.write(buffer);
+                },
+                function () {
+                    console.log('Success!');
+                    client.end();
+                }
+            ];
+
+            for (var i = 0; i < tasks.length; i++) {
+                setTimeout(tasks[i], i * 15);
+            }
+        });
+    });
+}
