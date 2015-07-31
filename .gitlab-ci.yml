@@ -1,3 +1,0 @@
-ci-deploy:
-  files:
-    - '*.json'
