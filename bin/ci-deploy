@@ -10,20 +10,20 @@ var archiver = require('archiver');
 
 process.argv.splice(0, 2);
 
-var configFile = path.join(__dirname, '../', 'config.json');
+var configFile = path.join(process.env.HOME || process.env.USERPROFILE, 'config.json');
 
 if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
     if (fs.existsSync(configFile)) {
         var data = fs.readFileSync(configFile, 'utf8').toString();
         var json = JSON.parse(data);
         if (json.key) {
-            return console.log('Your key is ' + json.key);
+            return console.log('Your key is ' + json.key + '. Configuration located at ' + configFile);
         }
     }
     var bytes = crypto.randomBytes(48);
     var string = bytes.toString('hex');
     fs.writeFileSync(configFile, JSON.stringify({key: string, ip: '127.0.0.1', port: 8084}, null, 3));
-    console.log('Your key is ' + string);
+    console.log('Your key is ' + string + '. Configuration located at ' + configFile);
 } else if (process.argv.length == 1 && process.argv[0].toLowerCase() == 'test') {
     var config = require(configFile);
     var client = new net.Socket();
@@ -31,8 +31,11 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
         console.log('Connected to server');
         client.end();
     });
-} else if (process.argv.length == 1 && /^\d+$/.test(process.argv[0])) {
+} else if (process.argv.length == 1) {
     // deploy
+    var split = process.argv[0].split('/');
+    var id = split.slice(split.length - 2, split.length).join('/').replace('.git', '');
+    console.log('Id: ' + id);
     var gitlabYML = path.join(process.cwd(), '.ci-deploy.yml');
     if (!fs.existsSync(gitlabYML)) {
         return console.error('.ci-deploy.yml does not exist!');
@@ -48,7 +51,7 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
     });
     if (files.length == 1) {
         // upload a single file
-        upload(fs.createReadStream(files[0]), path.extname(files[0]));
+        upload(fs.createReadStream(files[0]), path.extname(files[0]), id);
     } else if (files.length > 1) {
         // zip the files
         var zip = archiver('zip', {});
@@ -57,14 +60,16 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
         });
         zip.finalize();
         zip.on('finish', function () {
-            upload(zip, '.zip');
+            upload(zip, '.zip', id);
         });
+    } else {
+        console.log('No files to upload!')
     }
 } else {
-    console.log('Invalid usage. Usage: ci-deploy [configure|$CI_PROJECT_ID]');
+    throw new Error('Invalid usage. Usage: ci-deploy [configure|$CI_PROJECT_ID]');
 }
 
-function upload(pipe, extension) {
+function upload(pipe, extension, projectId) {
     if (!fs.existsSync(configFile)) {
         return console.error('Key does not exist! Have you ran ci-deploy configure?');
     }
@@ -88,6 +93,7 @@ function upload(pipe, extension) {
         // buffer is encrypted, time to send
         var client = new net.Socket();
         client.connect(config.port, config.ip, function () {
+            var closed = false;
             console.log('Connected to server');
             var tasks = [
                 function () {
@@ -96,7 +102,7 @@ function upload(pipe, extension) {
                 },
                 function () {
                     console.log('Sending project id..');
-                    client.write(process.argv[0]);
+                    client.write(projectId);
                 },
                 function () {
                     console.log('Sending extension..');
@@ -104,17 +110,26 @@ function upload(pipe, extension) {
                 },
                 function () {
                     console.log('Sending file..');
-                    client.write(buffer);
+                    client.write(buffer.toString('base64'));
                 },
                 function () {
-                    console.log('Success!');
-                    client.end();
+                    var interval = setInterval(function() {
+                        if (closed) {
+                            return clearInterval(interval);
+                        }
+                        console.log('Sending end code..');
+                        client.write('done');
+                    }, 1000);
                 }
             ];
 
             for (var i = 0; i < tasks.length; i++) {
                 setTimeout(tasks[i], i * 15);
             }
+
+            client.on('close', function() {
+                closed = true;
+            });
         });
     });
 }
