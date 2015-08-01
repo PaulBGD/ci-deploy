@@ -24,11 +24,18 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
     var string = bytes.toString('hex');
     fs.writeFileSync(configFile, JSON.stringify({key: string, ip: '127.0.0.1', port: 8084}, null, 3));
     console.log('Your key is ' + string);
+} else if (process.argv.length == 1 && process.argv[0].toLowerCase() == 'test') {
+    var config = require(configFile);
+    var client = new net.Socket();
+    client.connect(config.port, config.ip, function () {
+        console.log('Connected to server');
+        client.end();
+    });
 } else if (process.argv.length == 1 && /^\d+$/.test(process.argv[0])) {
     // deploy
-    var gitlabYML = path.join(process.cwd(), '.gitlab-ci.yml');
+    var gitlabYML = path.join(process.cwd(), '.ci-deploy.yml');
     if (!fs.existsSync(gitlabYML)) {
-        return console.error('.gitlab-ci.yml does not exist!');
+        return console.error('.ci-deploy.yml does not exist!');
     }
     data = yaml.load(fs.readFileSync(gitlabYML));
     if (!data['ci-deploy']) {
