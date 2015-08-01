@@ -1,7 +1,7 @@
 {
   "name": "ci-deploy",
   "preferGlobal": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Easily deploy artifacts to a CI Host",
   "main": "./bin/ci-deploy",
   "author": {
