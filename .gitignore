@@ -5,3 +5,6 @@
 # Node
 npm-debug.log
 node_modules/
+
+# Our stuff
+config.json

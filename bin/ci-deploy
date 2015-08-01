@@ -22,7 +22,7 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
     }
     var bytes = crypto.randomBytes(48);
     var string = bytes.toString('hex');
-    fs.writeFileSync(configFile, JSON.stringify({key: string, ip: 'http://unknown.com', port: 8084}, null, 3));
+    fs.writeFileSync(configFile, JSON.stringify({key: string, ip: '127.0.0.1', port: 8084}, null, 3));
     console.log('Your key is ' + string);
 } else if (process.argv.length == 1 && /^\d+$/.test(process.argv[0])) {
     // deploy
