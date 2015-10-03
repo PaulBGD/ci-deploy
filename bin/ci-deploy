@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 var fs = require('fs');
-var net = require('net');
 var path = require('path');
 var glob = require('glob');
+var dgram = require('dgram');
 var yaml = require('js-yaml');
 var crypto = require('crypto');
 var archiver = require('archiver');
@@ -84,49 +84,65 @@ function upload(pipe, extension, projectId) {
     pipe.on('end', function () {
         var buffer = Buffer.concat(buffers);
         var key = config.key;
-        var id = key.substring(0, key.length / 2);
-        var salt = key.substring(key.length / 2, key.length);
-        var cipher = crypto.createCipher('aes-256-cbc', salt, salt);
-        cipher.setAutoPadding(false);
-        buffer = cipher.update(buffer);
 
-        // buffer is encrypted, time to send
-        var client = new net.Socket();
-        client.connect(config.port, config.ip, function () {
-            var closed = false;
-            console.log('Connected to server');
+        var chunkSize = 4096;
+        var difference = buffer.length % chunkSize;
+        var chunks = (buffer.length - difference) / chunkSize;
+        if (difference > 0) {
+            chunks++; // for the extra stuff
+        }
 
-            console.log('Sending unique id..');
-            client.write(id, sendProjectId);
+        var client = dgram.createSocket('udp4');
+        console.log('Sending messages to server ' + config.ip + ':' + config.port);
 
-            function sendProjectId() {
-                console.log('Sending project id..');
-                client.write(projectId, sendExtension);
-            }
-
-            function sendExtension() {
-                console.log('Sending extension..');
-                client.write(extension, sendFile);
-            }
-
-            function sendFile() {
-                console.log('Sending file..');
-                client.write(buffer.toString('base64'), finish);
-            }
-
-            function finish() {
-                var interval = setInterval(function () {
-                    if (closed) {
-                        return clearInterval(interval);
-                    }
-                    console.log('Sending end code..');
-                    client.write('done');
-                }, 1000);
-            }
-
-            client.on('close', function () {
-                closed = true;
+        function send(str, callback) {
+            var buf = Buffer.isBuffer(str) ? str : new Buffer(str, 'utf8');
+            client.send(buf, 0, buf.length, config.port, config.ip, function (err) {
+                if (err) {
+                    throw err;
+                }
+                callback();
             });
-        });
+        }
+
+        console.log('Sending unique id..');
+        send(key, sendProjectId);
+
+        function sendProjectId() {
+            console.log('Sending project id..');
+            send(projectId, sendExtension);
+        }
+
+        function sendExtension() {
+            console.log('Sending extension..');
+            send(extension, sendChunks);
+        }
+
+        function sendChunks() {
+            console.log('Sending chunks amount..');
+            send(String(chunks), sendFile);
+        }
+
+        function sendFile() {
+            console.log('Sending file..');
+            var i = 0;
+            function sendNextChunk() {
+                if (i >= buffer.length) {
+                    console.log('Done.');
+                    client.close();
+                    return;
+                }
+                console.log('Sending chunk ' + (i / chunkSize) + '/' + chunks + '..');
+                client.send(buffer, i, Math.min(chunkSize, buffer.length - i), config.port, config.ip, function (err) {
+                    if (err) {
+                        throw err;
+                    }
+                    i += chunkSize;
+                    sendNextChunk();
+                });
+            }
+            sendNextChunk();
+        }
+
     });
 }
