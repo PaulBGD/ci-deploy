@@ -95,39 +95,36 @@ function upload(pipe, extension, projectId) {
         client.connect(config.port, config.ip, function () {
             var closed = false;
             console.log('Connected to server');
-            var tasks = [
-                function () {
-                    console.log('Sending unique id..');
-                    client.write(id);
-                },
-                function () {
-                    console.log('Sending project id..');
-                    client.write(projectId);
-                },
-                function () {
-                    console.log('Sending extension..');
-                    client.write(extension);
-                },
-                function () {
-                    console.log('Sending file..');
-                    client.write(buffer.toString('base64'));
-                },
-                function () {
-                    var interval = setInterval(function() {
-                        if (closed) {
-                            return clearInterval(interval);
-                        }
-                        console.log('Sending end code..');
-                        client.write('done');
-                    }, 1000);
-                }
-            ];
 
-            for (var i = 0; i < tasks.length; i++) {
-                setTimeout(tasks[i], i * 15);
+            console.log('Sending unique id..');
+            client.write(id, sendProjectId);
+
+            function sendProjectId() {
+                console.log('Sending project id..');
+                client.write(projectId, sendExtension);
             }
 
-            client.on('close', function() {
+            function sendExtension() {
+                console.log('Sending extension..');
+                client.write(extension, sendFile);
+            }
+
+            function sendFile() {
+                console.log('Sending file..');
+                client.write(buffer.toString('base64'), finish);
+            }
+
+            function finish() {
+                var interval = setInterval(function () {
+                    if (closed) {
+                        return clearInterval(interval);
+                    }
+                    console.log('Sending end code..');
+                    client.write('done');
+                }, 1000);
+            }
+
+            client.on('close', function () {
                 closed = true;
             });
         });
