@@ -63,7 +63,7 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
             upload(zip, '.zip', id);
         });
     } else {
-        console.log('No files to upload!')
+        throw new Error('No files to upload!');
     }
 } else {
     throw new Error('Invalid usage. Usage: ci-deploy [configure|$CI_PROJECT_ID]');
@@ -71,11 +71,11 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
 
 function upload(pipe, extension, projectId) {
     if (!fs.existsSync(configFile)) {
-        return console.error('Key does not exist! Have you ran ci-deploy configure?');
+        throw new Error('Key does not exist! Have you ran ci-deploy configure? I\'m looking at ' + configFile);
     }
     var config = require(configFile);
     if (!config.key) {
-        return console.error('Key does not exist! Have you ran ci-deploy configure?');
+        throw new Error('Key does not exist! Have you ran ci-deploy configure? I\'m looking at ' + configFile);
     }
     var buffers = [];
     pipe.on('data', function (buffer) {
