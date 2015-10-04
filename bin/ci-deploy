@@ -24,18 +24,13 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
     var string = bytes.toString('hex');
     fs.writeFileSync(configFile, JSON.stringify({key: string, ip: '127.0.0.1', port: 8084}, null, 3));
     console.log('Your key is ' + string + '. Configuration located at ' + configFile);
-} else if (process.argv.length == 1 && process.argv[0].toLowerCase() == 'test') {
-    var config = require(configFile);
-    var client = new net.Socket();
-    client.connect(config.port, config.ip, function () {
-        console.log('Connected to server');
-        client.end();
-    });
-} else if (process.argv.length == 1) {
+} else if (process.argv.length == 2) {
     // deploy
     var split = process.argv[0].split('/');
     var id = split.slice(split.length - 2, split.length).join('/').replace('.git', '');
     console.log('Id: ' + id);
+    var ref = process.argv[1];
+    console.log('Ref: ' + ref);
     var gitlabYML = path.join(process.cwd(), '.ci-deploy.yml');
     if (!fs.existsSync(gitlabYML)) {
         return console.error('.ci-deploy.yml does not exist!');
@@ -51,7 +46,7 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
     });
     if (files.length == 1) {
         // upload a single file
-        upload(fs.createReadStream(files[0]), path.extname(files[0]), id);
+        upload(fs.createReadStream(files[0]), path.extname(files[0]), id, ref);
     } else if (files.length > 1) {
         // zip the files
         var zip = archiver('zip', {});
@@ -60,7 +55,7 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
         });
         zip.finalize();
         zip.on('finish', function () {
-            upload(zip, '.zip', id);
+            upload(zip, '.zip', id, ref);
         });
     } else {
         throw new Error('No files to upload!');
@@ -69,7 +64,7 @@ if (process.argv.length == 1 && process.argv[0].toLowerCase() === 'configure') {
     throw new Error('Invalid usage. Usage: ci-deploy [configure|$CI_PROJECT_ID]');
 }
 
-function upload(pipe, extension, projectId) {
+function upload(pipe, extension, projectId, ref) {
     if (!fs.existsSync(configFile)) {
         throw new Error('Key does not exist! Have you ran ci-deploy configure? I\'m looking at ' + configFile);
     }
@@ -110,7 +105,12 @@ function upload(pipe, extension, projectId) {
 
         function sendProjectId() {
             console.log('Sending project id..');
-            send(projectId, sendExtension);
+            send(projectId, sendProjectRef);
+        }
+
+        function sendProjectRef() {
+            console.log('Sending project ref..');
+            send(ref, sendExtension);
         }
 
         function sendExtension() {
